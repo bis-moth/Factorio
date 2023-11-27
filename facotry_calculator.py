@@ -19,6 +19,12 @@ raw_material_identifier = yaml_data['raw_material_identifier']
 
 
 
+def sort_dict_alphabetically(dictionary):
+    sorted_dict = dict(sorted(dictionary.items(), key=lambda item: (not item[0].isdigit(), item[0])))
+    return sorted_dict
+
+
+
 def merge_dictionaries(dict1, dict2):
     merged_dict = {}
 
@@ -214,6 +220,7 @@ def main():
     parser.add_argument("--output_factories", type=float, help="Optional argument 2 for calculator functions.  Cannot be used in conjuction with --output_rate.")
     parser.add_argument("--output_rate", type=float, help="Alternative argument 2 for calculator functions.  Cannot be used in conjuction with --output_factories.")
     parser.add_argument("--parameter", type=float, help="Optional argument for 'get_parameter' function to retrieve only the specified parameter data for the specified item.")
+    parser.add_argument("--decimals", type=int, default=3, help="Optional argument to specify the number of decimal places to use when displaying calculator outputs.")
 
     args = parser.parse_args()
 
@@ -224,7 +231,16 @@ def main():
     elif args.function_name in ["factory", "calcualte_factory"]:
         print("WIP")
         factory = calculate_facotry(args.item, args.output_factories, args.output_rate)
-        for item in factory: print(f"{item}: {int(math.ceil(factory[item]))}")
+        factory = sort_dict_alphabetically(factory)
+        print("RAW MATERIALS:")
+        for item in factory: 
+            if is_raw(item):
+                print(f"{item}")
+
+        print("INTERMEDIATE MATERIALS:")
+        for item in factory: 
+            if not is_raw(item):
+                print(f"{item}: {round(factory[item],args.decimals)}")
     
     elif args.function_name in ["recipe", "get_recipe"]:
         recipe = get_recipe(args.item)
