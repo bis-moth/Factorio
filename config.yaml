@@ -1,0 +1,8 @@
+#parameters used for the calculator
+fluid_recipe: coal-liquefaction
+
+assembler_level: 2
+
+output_assemblers: 1
+
+raw_material_identifier: "raw-material"
