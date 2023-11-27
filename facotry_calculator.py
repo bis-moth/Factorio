@@ -1,9 +1,7 @@
 import json
 import yaml
 import argparse
-import sys
-
-raw_material_identifier = ""
+import math
 
 # Opening JSON file
 recipe_file = open('recipe.json')
@@ -19,11 +17,31 @@ with open(yaml_file_path, 'r') as file:
 # Extract the value associated with the key 'raw_material_identifier'
 raw_material_identifier = yaml_data['raw_material_identifier']
 
-def has_recipe(item):
+
+
+def merge_dictionaries(dict1, dict2):
+    merged_dict = {}
+
+    # Iterate over keys in dict1
+    for key, value in dict1.items():
+        # Sum values for identical keys
+        merged_dict[key] = merged_dict.get(key, 0) + value
+
+    # Iterate over keys in dict2
+    for key, value in dict2.items():
+        # Sum values for identical keys
+        merged_dict[key] = merged_dict.get(key, 0) + value
+
+    return merged_dict
+
+
+
+def is_raw(item):
     if item in items:
-        return(True)
-    else:
         return(False)
+    else:
+        return(True)
+
 
 
 def get_ingredients(item):
@@ -42,26 +60,31 @@ def get_ingredients(item):
     return(list_of_ingredients)
 
 
+
 # Generate a list of all raw materials
-LIST_OF_RAW_MATERIALS = []
-for item in items:
-    for ingredient in get_ingredients(item):
-        if not has_recipe(ingredient): 
-            LIST_OF_RAW_MATERIALS.append(ingredient)
-LIST_OF_RAW_MATERIALS = list(set(LIST_OF_RAW_MATERIALS))
+def list_raw():
+    LIST_OF_RAW_MATERIALS_WITH_DUPLICATES = []
+    for item in items:
+        for ingredient in get_ingredients(item):
+            if is_raw(ingredient): 
+                LIST_OF_RAW_MATERIALS_WITH_DUPLICATES.append(ingredient)
+    LIST_OF_RAW_MATERIALS = list(set(LIST_OF_RAW_MATERIALS_WITH_DUPLICATES))
+    print(LIST_OF_RAW_MATERIALS)
 
 
 
 def get_crafting_time(item):
+
     try:
         if 'energy' in items[item]: # check that the item lists the 'energy'
             return(items[item]['energy'])
         else:
-            return(0.5)
+            return(1)
 
     except: # if no energy is listed
         print(f"No 'energy' key found in the JSON data for {item}.")
-        return(0.5)
+        return(1)
+
 
 
 def get_output_quantity(item):
@@ -74,8 +97,13 @@ def get_output_quantity(item):
     Returns:
     - int: the quantity of output itmes produced by the item's recipe  
     """
-    output_quantity = get_item_parameter(item, 'main_product')['amount']
-    return(output_quantity)
+    if is_raw(item):
+        return(1)
+    else:
+        output_quantity = get_item_parameter(item, 'main_product')['amount']
+        return(output_quantity)
+
+
 
 def get_recipe(item):
     """
@@ -88,6 +116,7 @@ def get_recipe(item):
     - dict: A dictionary containing the required items and their required quantities.
         {ingredient(string):amount(int), ...}
     """
+    #print(f"get_recipe({item})")
 
     # initialize the recipie as a dictionary and extract the ingredients data
     recipe = {} 
@@ -113,6 +142,8 @@ def get_item_parameter(item, parameter):
     - dict: A dictionary containing the required items and their required quantities.
         {ingredient(string):amount(int), ...}
     """
+    #print(f"get_item_parameter({item}, {parameter})")
+
     data = None
     # Check that the item and parameter exist
     if item in items: 
@@ -129,42 +160,83 @@ def get_item_parameter(item, parameter):
 
 
 def ratio(item, output_factories=None, output_rate=None):
+    #print(f"ratio: {item}: {output_factories}")
     # Only allow one of the two optional inputs to be specified
     if bool(output_factories) and bool(output_rate):
         raise ValueError("Provide only 'output_factories' or 'output_rate', not both.")
     
-    # Determine the number of output factories required if not already specified
-    if not bool(output_factories): output_factories = 1
-    if not bool(output_rate): 
-        output_rate = output_factories/get_crafting_time(item)/get_output_quantity(item)
+    if is_raw(item):
+        if bool(output_factories):
+            return({item: output_factories})
+        elif bool(output_rate):
+            return({item: output_rate})
+        else:
+            return({item: 1})
     
-    # Calculate the number of factories required for each item in the recipe
-    recipe = get_recipe(item)
-    input_factories_required = [[item, recipe[item]*output_rate*get_crafting_time(item)/get_output_quantity(item)] for item in recipe]
-    return([item, output_factories], input_factories_required)
+    else:
+        # Determine the number of output factories and output rate
+        if not bool(output_factories) and not bool(output_rate): 
+            output_factories = 1
+            output_rate = output_factories/get_crafting_time(item)/get_output_quantity(item)
+        elif not bool(output_rate): 
+            output_rate = output_factories/get_crafting_time(item)/get_output_quantity(item)
+        else:
+            output_factories = output_rate*get_crafting_time(item)*get_output_quantity(item)
+        
+        # Determine the number of input factories required for each item in the recipe
+        recipe = get_recipe(item)
+        input_factories_required = {}
+        for ingredient in recipe:
+            input_factories_required[ingredient] = recipe[ingredient]*output_rate*get_crafting_time(ingredient)/get_output_quantity(ingredient)
+        return(input_factories_required)
+
+
+
+def calculate_facotry(item, output_factories=None, output_rate=None):
+    #print(f"calculate_factory: {item}: {output_factories}")
+    factory = {item: output_factories}
+
+        
+    if not is_raw(item):
+        #print(f"Expanding ingredient: {item}")
+        current_item_ratio = ratio(item, output_factories, output_rate)
+        for ingredient in current_item_ratio:
+            factory = merge_dictionaries(factory, calculate_facotry(ingredient, current_item_ratio[ingredient]))
+    
+    return(factory)
     
 
 
+def main():
+    parser = argparse.ArgumentParser(description="Example script with functions and required inputs.")
+    parser.add_argument("function_name", choices=["raw", "raw_materials", "ratio", "factory", "calcualte_factory", "recipe", "get_recipe", "parameter"], help="Name of the function to execute.")
+    parser.add_argument("--item", type=str, help="Required argument for all functions")
+    parser.add_argument("--output_factories", type=float, help="Optional argument 2 for calculator functions.  Cannot be used in conjuction with --output_rate.")
+    parser.add_argument("--output_rate", type=float, help="Alternative argument 2 for calculator functions.  Cannot be used in conjuction with --output_factories.")
+    parser.add_argument("--parameter", type=float, help="Optional argument for 'get_parameter' function to retrieve only the specified parameter data for the specified item.")
 
-if __name__ == "__main__":
-    def main():
-        parser = argparse.ArgumentParser(description="Example script with functions and required inputs.")
-        parser.add_argument("function_name", choices=["ratio", "recipe", "get_recipe"], help="Name of the function to execute.")
-        parser.add_argument("--item", type=str, help="Required argument for all functions")
-        parser.add_argument("--output_factories", type=float, help="Optional argument 2 for calculator functions.  Cannot be used in conjuction with --output_rate.")
-        parser.add_argument("--output_rate", type=float, help="Alternative argument 2 for calculator functions.  Cannot be used in conjuction with --output_factories.")
-        parser.add_argument("--parameter", type=float, help="Optional argument for 'get_parameter' function to retrieve only the specified parameter data for the specified item.")
+    args = parser.parse_args()
 
-        args = parser.parse_args()
+    if args.function_name == "ratio":
+        item_ratio = ratio(args.item, args.output_factories, args.output_rate)
+        for item in item_ratio: print(f"{item}: {item_ratio[item]}")
+    
+    elif args.function_name in ["factory", "calcualte_factory"]:
+        print("WIP")
+        factory = calculate_facotry(args.item, args.output_factories, args.output_rate)
+        for item in factory: print(f"{item}: {int(math.ceil(factory[item]))}")
+    
+    elif args.function_name in ["recipe", "get_recipe"]:
+        recipe = get_recipe(args.item)
+        for ingredient in recipe: print(f"{ingredient}: {recipe[ingredient]}") 
+    
+    elif args.function_name in ["paramter", "get_parameter"]:
+        print(get_item_parameter(args.item, args.parameter))
+    
+    elif args.function_name in ["raw", "raw_materials"]:
+        list_raw()
 
-        if args.function_name == "ratio":
-            item_ratio = ratio(args.item, args.output_factories, args.output_rate)
-            for element in item_ratio: print(element)
-        elif args.function_name == "recipe" or "get_recipe":
-            recipe = get_recipe(args.item)
-            for ingredient in recipe: print(f"{ingredient}: {recipe[ingredient]}") 
-        elif args.function_name == "paramter" or "get_parameter":
-            print(get_item_parameter(args.item, args.parameter))
+
 
 if __name__ == "__main__":
     main()
