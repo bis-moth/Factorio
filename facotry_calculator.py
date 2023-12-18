@@ -101,7 +101,7 @@ def get_output_quantity(item):
     - item (string): The name of the item of interest.
 
     Returns:
-    - int: the quantity of output itmes produced by the item's recipe  
+    - output_quantity (int): the quantity of itmes produced by the item's recipe  
     """
     if is_raw(item):
         return(1)
@@ -122,7 +122,6 @@ def get_recipe(item):
     - dict: A dictionary containing the required items and their required quantities.
         {ingredient(string):amount(int), ...}
     """
-    #print(f"get_recipe({item})")
 
     # initialize the recipie as a dictionary and extract the ingredients data
     recipe = {} 
@@ -145,10 +144,8 @@ def get_item_parameter(item, parameter):
     - parameter (string): The name of the parameter you whish to extract.  This must be present at the 2nd level in the "recipe.json" file.
 
     Returns:
-    - dict: A dictionary containing the required items and their required quantities.
-        {ingredient(string):amount(int), ...}
+    - 
     """
-    #print(f"get_item_parameter({item}, {parameter})")
 
     data = None
     # Check that the item and parameter exist
@@ -165,8 +162,17 @@ def get_item_parameter(item, parameter):
 
 
 
+def convert_rate_to_factories(item, rate):
+    return rate*get_crafting_time(item)*get_output_quantity(item)
+
+
+
+def convert_factories_to_rate(item, factories):
+    return factories/get_crafting_time(item)/get_output_quantity(item)
+
+
+
 def ratio(item, output_factories=None, output_rate=None):
-    #print(f"ratio: {item}: {output_factories}")
     # Only allow one of the two optional inputs to be specified
     if bool(output_factories) and bool(output_rate):
         raise ValueError("Provide only 'output_factories' or 'output_rate', not both.")
@@ -183,11 +189,11 @@ def ratio(item, output_factories=None, output_rate=None):
         # Determine the number of output factories and output rate
         if not bool(output_factories) and not bool(output_rate): 
             output_factories = 1
-            output_rate = output_factories/get_crafting_time(item)/get_output_quantity(item)
+            output_rate = convert_factories_to_rate(item, output_factories)
         elif not bool(output_rate): 
-            output_rate = output_factories/get_crafting_time(item)/get_output_quantity(item)
+            output_rate = convert_factories_to_rate(item, output_factories)
         else:
-            output_factories = output_rate*get_crafting_time(item)*get_output_quantity(item)
+            output_factories = convert_rate_to_factories(item, output_factories)
         
         # Determine the number of input factories required for each item in the recipe
         recipe = get_recipe(item)
@@ -199,13 +205,13 @@ def ratio(item, output_factories=None, output_rate=None):
 
 
 def calculate_facotry(item, output_factories=None, output_rate=None):
-    #print(f"calculate_factory: {item}: {output_factories}")
+    if not output_factories:
+        output_factories = convert_rate_to_factories(item, output_rate)
     factory = {item: output_factories}
 
         
     if not is_raw(item):
-        #print(f"Expanding ingredient: {item}")
-        current_item_ratio = ratio(item, output_factories, output_rate)
+        current_item_ratio = ratio(item, output_factories)
         for ingredient in current_item_ratio:
             factory = merge_dictionaries(factory, calculate_facotry(ingredient, current_item_ratio[ingredient]))
     
